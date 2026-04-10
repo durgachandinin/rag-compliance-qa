@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compliance Q&A</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f3; height: 100vh; display: flex; flex-direction: column; }
+.header { background: #fff; border-bottom: 1px solid #e8e8e5; padding: 14px 20px; display: flex; align-items: center; gap: 10px; }
+.header-dot { width: 8px; height: 8px; border-radius: 50%; background: #1D9E75; }
+.header-title { font-size: 15px; font-weight: 500; color: #1a1a1a; }
+.header-sub { font-size: 12px; color: #888; margin-left: auto; }
+.messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.msg { max-width: 80%; display: flex; flex-direction: column; gap: 6px; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.bot { align-self: flex-start; align-items: flex-start; }
+.bubble { padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.6; }
+.msg.user .bubble { background: #dbeafe; color: #1e40af; border-bottom-right-radius: 4px; }
+.msg.bot .bubble { background: #fff; border: 1px solid #e8e8e5; color: #1a1a1a; border-bottom-left-radius: 4px; }
+.sources { display: flex; flex-wrap: wrap; gap: 6px; }
+.source-tag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #f5f5f3; border: 1px solid #e8e8e5; color: #666; display: flex; align-items: center; gap: 4px; }
+.source-dot { width: 5px; height: 5px; border-radius: 50%; background: #1D9E75; flex-shrink: 0; }
+.timing { font-size: 11px; color: #aaa; }
+.input-area { background: #fff; border-top: 1px solid #e8e8e5; padding: 14px 20px; display: flex; gap: 10px; align-items: flex-end; }
+textarea { flex: 1; border: 1px solid #ddd; border-radius: 12px; padding: 10px 14px; font-size: 14px; font-family: inherit; color: #1a1a1a; background: #fafaf8; resize: none; min-height: 44px; max-height: 120px; line-height: 1.5; outline: none; }
+textarea:focus { border-color: #aaa; }
+.send-btn { width: 38px; height: 38px; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.send-btn:hover { background: #f5f5f3; }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.send-btn svg { width: 16px; height: 16px; }
+.typing span { width: 6px; height: 6px; border-radius: 50%; background: #ccc; display: inline-block; margin: 0 2px; animation: bounce 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #888; }
+.empty-state p { font-size: 14px; }
+.suggestions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; width: 100%; max-width: 420px; }
+.suggestion { padding: 9px 14px; border-radius: 8px; border: 1px solid #e8e8e5; background: #fff; font-size: 13px; color: #666; cursor: pointer; text-align: left; }
+.suggestion:hover { border-color: #aaa; color: #1a1a1a; }
+.status-bar { font-size: 11px; color: #aaa; padding: 0 20px 10px; display: flex; gap: 12px; }
+.reset-btn { font-size: 11px; color: #aaa; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-dot" id="status-dot"></div>
+  <span class="header-title">Compliance Q&A</span>
+  <span class="header-sub" id="status-text">connecting...</span>
+</div>
+<div class="messages" id="messages">
+  <div class="empty-state" id="empty-state">
+    <p>Ask anything about SEC filings or Basel III regulations</p>
+    <div class="suggestions">
+      <button class="suggestion" onclick="useSuggestion(this)">What was Goldman Sachs CET1 ratio in 2023?</button>
+      <button class="suggestion" onclick="useSuggestion(this)">What is the minimum LCR requirement under Basel III?</button>
+      <button class="suggestion" onclick="useSuggestion(this)">What is JPMorgan's G-SIB surcharge?</button>
+    </div>
+  </div>
+</div>
+<div class="status-bar">
+  <span id="api-status"></span>
+  <button class="reset-btn" onclick="resetChat()">clear conversation</button>
+</div>
+<div class="input-area">
+  <textarea id="input" placeholder="Ask a compliance question..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+  <button class="send-btn" id="send-btn" onclick="sendMessage()" disabled>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h12M9 3l5 5-5 5"/></svg>
+  </button>
+</div>
+<script>
+const API = 'http://localhost:8000';
+document.getElementById('input').addEventListener('input', function() {
+  document.getElementById('send-btn').disabled = this.value.trim().length < 5;
+});
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/health');
+    const d = await r.json();
+    const dot = document.getElementById('status-dot');
+    if (d.index_loaded) {
+      dot.style.background = '#1D9E75';
+      document.getElementById('status-text').textContent = 'ready';
+      document.getElementById('api-status').innerHTML = '<span style="color:#1D9E75">API connected</span> · ' + d.model;
+    } else {
+      dot.style.background = '#EF9F27';
+      document.getElementById('status-text').textContent = 'index not loaded';
+      document.getElementById('api-status').textContent = 'Run python scripts/run_ingestion.py first';
+    }
+  } catch(e) {
+    document.getElementById('status-dot').style.background = '#E24B4A';
+    document.getElementById('status-text').textContent = 'offline';
+    document.getElementById('api-status').innerHTML = '<span style="color:#E24B4A">Server not running</span>';
+  }
+}
+function useSuggestion(btn) {
+  document.getElementById('input').value = btn.textContent;
+  document.getElementById('send-btn').disabled = false;
+  sendMessage();
+}
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+function addMessage(role, content, sources, timing) {
+  document.getElementById('empty-state')?.remove();
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  div.appendChild(bubble);
+  if (sources && sources.length > 0) {
+    const src = document.createElement('div');
+    src.className = 'sources';
+    sources.forEach(s => {
+      const tag = document.createElement('div');
+      tag.className = 'source-tag';
+      tag.innerHTML = '<div class="source-dot"></div>';
+      tag.appendChild(document.createTextNode(s.company ? s.company + (s.year ? ' ' + s.year : '') : s.filename));
+      src.appendChild(tag);
+    });
+    div.appendChild(src);
+  }
+  if (timing) {
+    const t = document.createElement('div');
+    t.className = 'timing';
+    t.textContent = (timing / 1000).toFixed(1) + 's';
+    div.appendChild(t);
+  }
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function addTyping() {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.id = 'typing-indicator';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble typing';
+  bubble.innerHTML = '<span></span><span></span><span></span>';
+  div.appendChild(bubble);
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function removeTyping() { document.getElementById('typing-indicator')?.remove(); }
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const q = input.value.trim();
+  if (q.length < 5) return;
+  addMessage('user', q);
+  input.value = ''; input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  addTyping();
+  try {
+    const r = await fetch(API + '/query', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({question: q}) });
+    const d = await r.json();
+    removeTyping();
+    addMessage('bot', r.ok ? d.answer : 'Error: ' + (d.detail || 'Something went wrong.'), r.ok ? d.sources : null, r.ok ? d.processing_time_ms : null);
+  } catch(e) {
+    removeTyping();
+    addMessage('bot', 'Could not reach the API. Make sure the server is running on port 8000.', null, null);
+  }
+  input.focus();
+}
+async function resetChat() {
+  try { await fetch(API + '/reset', {method:'POST'}); } catch(e) {}
+  document.getElementById('messages').innerHTML = '<div class="empty-state" id="empty-state"><p>Ask anything about SEC filings or Basel III regulations</p><div class="suggestions"><button class="suggestion" onclick="useSuggestion(this)">What was Goldman Sachs CET1 ratio in 2023?</button><button class="suggestion" onclick="useSuggestion(this)">What is the minimum LCR requirement under Basel III?</button><button class="suggestion" onclick="useSuggestion(this)">What is JPMorgan\'s G-SIB surcharge?</button></div></div>';
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
