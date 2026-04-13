@@ -24,3 +24,7 @@ uvicorn src.api.main:app --reload --port 8000
 Real regulatory documents ingested:
 - Basel III framework documents (BIS/BCBS PDFs)
 - Place PDFs in `data/raw/` and run `python scripts/run_ingestion.py` to rebuild the index
+
+## UI
+
+A chat interface is served automatically at `http://localhost:8000` when the server is running. No need to open any files manually.
