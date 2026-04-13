@@ -18,3 +18,9 @@ uvicorn src.api.main:app --reload --port 8000
 - LangChain LCEL + FAISS + OpenAI embeddings
 - FastAPI with conversation memory and source citation
 - RAGAS evaluation framework
+
+## Data
+
+Real regulatory documents ingested:
+- Basel III framework documents (BIS/BCBS PDFs)
+- Place PDFs in `data/raw/` and run `python scripts/run_ingestion.py` to rebuild the index
