@@ -8,6 +8,8 @@ import uvicorn
 from src.config import settings
 from src.ingestion.vector_store import VectorStoreManager
 from src.retrieval.qa_chain import ComplianceQAChain
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=5, max_length=1000,
@@ -64,6 +66,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.mount("/static", StaticFiles(directory="."), name="static")
+
+@app.get("/")
+async def serve_ui():
+    return FileResponse("ui.html") 
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
